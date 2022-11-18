@@ -1,0 +1,29 @@
+version: '2'
+
+services:
+  db:
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - ./init_db.sql:/init_db.sql
+      - ./init_db.sh:/docker-entrypoint-initdb.d/init_db.sh
+    restart: always
+    image: postgres:13
+    expose:
+      - "5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    links:
+      - db:db
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./:/translation_conveyor
+    command: ./manage.py runserver 0:8000
