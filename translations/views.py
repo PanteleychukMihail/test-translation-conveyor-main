@@ -1,10 +1,13 @@
-from django.views.generic import TemplateView
+from django.shortcuts import render
+from django.urls import reverse_lazy
+from django.views.generic import TemplateView, CreateView, UpdateView
 from django.db.models import Count
 
 from rest_framework import viewsets, serializers
 from rest_framework.permissions import BasePermission
 from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
+
 
 from .models import Translation, STATUS_DICT, STATUS_CHOICES
 
@@ -27,23 +30,29 @@ class AvailableActionSerializer(serializers.Serializer):
 class TranslationSerializer(serializers.ModelSerializer):
     from_status = serializers.IntegerField(write_only=True)
     available_actions = serializers.ListField(child=AvailableActionSerializer(), read_only=True)
+
     class Meta:
         model = Translation
-        fields = ['id', 'txt_original', 'txt_translation', 'status', 'from_status', 'available_actions', 'qa_comment']
+        fields = ['id', 'txt_original', 'txt_translation', 'status', 'from_status', 'available_actions', 'qa_comment',
+                  'on_hold']
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
+        if ret['on_hold'] == False:
+            del ret['on_hold']
         user = self.context['request'].user
 
         ret['available_actions'] = [
-            {'status': to_status, 'display': name, 'action': 'change_status'}
-            for to_status, name in STATUS_CHOICES
-            if obj.user_can_move_to_status(user, to_status)
-        ] + (
-            [{'display': 'Translate', 'action': 'translate'}] if obj.user_can_translate(user) else []
-        ) + (
-            [{'display': 'Add QA Comment', 'action': 'qa_comment'}] if obj.user_can_add_qa_comment(user) else []
-        )
+                                       {'status': to_status, 'display': name, 'action': 'change_status'}
+                                       for to_status, name in STATUS_CHOICES
+                                       if obj.user_can_move_to_status(user, to_status)
+                                   ] + (
+                                       [{'display': 'Translate', 'action': 'translate'}] if obj.user_can_translate(
+                                           user) else []
+                                   ) + (
+                                       [{'display': 'Add QA Comment',
+                                         'action': 'qa_comment'}] if obj.user_can_add_qa_comment(user) else []
+                                   )
         return ret
 
     def update(self, instance, validated_data):
@@ -64,9 +73,10 @@ class TranslationSerializer(serializers.ModelSerializer):
 class TranslationViewSet(viewsets.ModelViewSet):
     permission_classes = [ViewTranslationPermission]
     queryset = Translation.objects.all()
-    filter_backends = (DjangoFilterBackend, )
+    filter_backends = (DjangoFilterBackend,)
     serializer_class = TranslationSerializer
     filterset_fields = ('status',)
+
 
 class IndexView(TemplateView):
     template_name = 'index.html'
@@ -80,7 +90,14 @@ class IndexView(TemplateView):
                 dict(display=STATUS_DICT[v['status']], **v)
                 for v in sorted(
                     Translation.objects.values('status').annotate(status_count=Count('status')),
-                    key=lambda a:a['status']
+                    key=lambda a: a['status']
                 )
             ]
         return data
+
+
+class AddMark(UpdateView):
+    model = Translation
+    fields = ['txt_original', 'txt_translation', 'mark']
+    template_name = 'translations/mark.html'
+    success_url = reverse_lazy('home')
