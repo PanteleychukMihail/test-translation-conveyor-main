@@ -1,13 +1,13 @@
-from django.shortcuts import render
+# from django.shortcuts import render
+from django.contrib import auth
 from django.urls import reverse_lazy
-from django.views.generic import TemplateView, CreateView, UpdateView
+from django.views.generic import TemplateView, UpdateView
 from django.db.models import Count
 
 from rest_framework import viewsets, serializers
 from rest_framework.permissions import BasePermission
 from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
-
 
 from .models import Translation, STATUS_DICT, STATUS_CHOICES
 
@@ -34,7 +34,7 @@ class TranslationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Translation
         fields = ['id', 'txt_original', 'txt_translation', 'status', 'from_status', 'available_actions', 'qa_comment',
-                  'on_hold']
+                  'on_hold', 'user_translator', 'user_qa']
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
@@ -77,6 +77,13 @@ class TranslationViewSet(viewsets.ModelViewSet):
     serializer_class = TranslationSerializer
     filterset_fields = ('status',)
 
+    def perform_update(self, serializer):
+        user = self.request.user
+        if user.groups.filter(name='translators').exists():
+            serializer.save(user_translator=self.request.user)
+        else:
+            serializer.save(user_qa=self.request.user)
+
 
 class IndexView(TemplateView):
     template_name = 'index.html'
@@ -84,12 +91,13 @@ class IndexView(TemplateView):
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         user = self.request.user
-
+        # print(user.groups.filter(name='translators').exists())
+        # print(user.groups.filter(name='QA').exists())
         if user.has_perm('translations.view_translation'):
             data['statuses'] = [
                 dict(display=STATUS_DICT[v['status']], **v)
                 for v in sorted(
-                    Translation.objects.values('status').annotate(status_count=Count('status')),
+                    Translation.objects.values('status').filter(user_translator=(None or user.id)).annotate(status_count=Count('status')),
                     key=lambda a: a['status']
                 )
             ]

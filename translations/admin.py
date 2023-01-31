@@ -5,8 +5,7 @@ from .models import Translation
 
 
 class TranslationAdmin(SimpleHistoryAdmin):
-    list_display = ['txt_original', 'txt_translation', 'status', 'user_translator', 'user_qa', 'qa_comment', 'on_hold',
-                    'mark', ]
+    list_display = ['txt_original', 'txt_translation', 'status', 'user_translator', 'user_qa', 'qa_comment', 'mark', 'on_hold']
     list_filter = ['status']
 
 
