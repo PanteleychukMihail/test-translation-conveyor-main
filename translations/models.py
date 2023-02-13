@@ -2,6 +2,7 @@ from itertools import permutations
 
 from django.db import models
 from django.conf import settings
+from django.db.models import Count
 from django.urls import reverse
 from simple_history.models import HistoricalRecords
 
@@ -55,7 +56,7 @@ class Translation(models.Model):
                       ]
 
     def user_can_move_to_status(self, user, to_status):
-        return to_status != self.status and self.on_hold == False and user.has_perm(
+        return to_status != self.status and self.on_hold==False and user.has_perm(
             'translations.can_move_from_{}_to_{}'.format(self.status, to_status))
 
     def user_can_translate(self, user, status=None):

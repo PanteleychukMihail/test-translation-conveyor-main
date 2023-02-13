@@ -13,11 +13,17 @@ from .models import Translation, STATUS_DICT, STATUS_CHOICES
 
 
 class ViewTranslationPermission(BasePermission):
-    def has_permission(self, request, view):
+    def has_object_permission(self, request, view, obj):
+        count_trans = Translation.objects.filter(user_translator=request.user).count()
         if request.method == 'GET':
             return request.user.has_perm('translations.view_translation')
         if request.method == 'PATCH':
-            return True
+            if (count_trans < 2 or obj.status != 10) and (obj.status == 10 or request.user == obj.user_translator):
+                return True
+            elif request.user.groups.values().get()['name'] == 'QA':
+                return True
+            else:
+                return False
 
 
 class AvailableActionSerializer(serializers.Serializer):
@@ -38,7 +44,7 @@ class TranslationSerializer(serializers.ModelSerializer):
 
     def to_representation(self, obj):
         ret = super().to_representation(obj)
-        if ret['on_hold'] == False:
+        if not ret['on_hold']:
             del ret['on_hold']
         user = self.context['request'].user
 
@@ -78,11 +84,19 @@ class TranslationViewSet(viewsets.ModelViewSet):
     filterset_fields = ('status',)
 
     def perform_update(self, serializer):
-        user = self.request.user
-        if user.groups.filter(name='translators').exists():
-            serializer.save(user_translator=self.request.user)
+        if 'status' in self.request.data:
+            if self.request.user.groups.filter(name='translators').exists():
+                if self.request.data['status'] == 10:
+                    serializer.save(user_translator=None)
+                else:
+                    serializer.save(user_translator=self.request.user)
+            if self.request.user.groups.filter(name='QA').exists():
+                if self.request.data['status'] == 10 or self.request.data['status'] == 50:
+                    serializer.save(user_translator=None)
+                else:
+                    serializer.save(user_qa=self.request.user)
         else:
-            serializer.save(user_qa=self.request.user)
+            serializer.save()
 
 
 class IndexView(TemplateView):
@@ -91,13 +105,12 @@ class IndexView(TemplateView):
     def get_context_data(self, **kwargs):
         data = super().get_context_data(**kwargs)
         user = self.request.user
-        # print(user.groups.filter(name='translators').exists())
-        # print(user.groups.filter(name='QA').exists())
         if user.has_perm('translations.view_translation'):
             data['statuses'] = [
                 dict(display=STATUS_DICT[v['status']], **v)
                 for v in sorted(
-                    Translation.objects.values('status').filter(user_translator=(None or user.id)).annotate(status_count=Count('status')),
+                    Translation.objects.values('status').annotate(
+                        status_count=Count('status')),
                     key=lambda a: a['status']
                 )
             ]
