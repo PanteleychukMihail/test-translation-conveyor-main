@@ -56,7 +56,7 @@ class Translation(models.Model):
                       ]
 
     def user_can_move_to_status(self, user, to_status):
-        return to_status != self.status and self.on_hold==False and user.has_perm(
+        return to_status != self.status and not self.on_hold and user.has_perm(
             'translations.can_move_from_{}_to_{}'.format(self.status, to_status))
 
     def user_can_translate(self, user, status=None):

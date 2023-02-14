@@ -1,4 +1,3 @@
-# from django.shortcuts import render
 from django.contrib import auth
 from django.urls import reverse_lazy
 from django.views.generic import TemplateView, UpdateView
@@ -9,16 +8,19 @@ from rest_framework.permissions import BasePermission
 from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import Translation, STATUS_DICT, STATUS_CHOICES
+from .models import Translation, STATUS_DICT, STATUS_CHOICES, STATUS_IN_QUEUE, STATUS_CHECKED
 
 
 class ViewTranslationPermission(BasePermission):
+
     def has_object_permission(self, request, view, obj):
+        max_translations = 2
         count_trans = Translation.objects.filter(user_translator=request.user).count()
         if request.method == 'GET':
             return request.user.has_perm('translations.view_translation')
-        if request.method == 'PATCH':
-            if (count_trans < 2 or obj.status != 10) and (obj.status == 10 or request.user == obj.user_translator):
+        elif request.method == 'PATCH':
+            if (count_trans < max_translations or obj.status != STATUS_IN_QUEUE) and \
+                    (obj.status == STATUS_IN_QUEUE or request.user == obj.user_translator):
                 return True
             elif request.user.groups.values().get()['name'] == 'QA':
                 return True
@@ -86,12 +88,12 @@ class TranslationViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         if 'status' in self.request.data:
             if self.request.user.groups.filter(name='translators').exists():
-                if self.request.data['status'] == 10:
+                if self.request.data['status'] == STATUS_IN_QUEUE:
                     serializer.save(user_translator=None)
                 else:
                     serializer.save(user_translator=self.request.user)
-            if self.request.user.groups.filter(name='QA').exists():
-                if self.request.data['status'] == 10 or self.request.data['status'] == 50:
+            elif self.request.user.groups.filter(name='QA').exists():
+                if self.request.data['status'] == STATUS_IN_QUEUE or self.request.data['status'] == STATUS_CHECKED:
                     serializer.save(user_translator=None)
                 else:
                     serializer.save(user_qa=self.request.user)
